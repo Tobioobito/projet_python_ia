@@ -1,0 +1,68 @@
+| Nombre de classes | Nombre d'images | Époques recommandées (approximatif) |
+| ----------------- | --------------- | ----------------------------------- |
+| 2 classes         | 500 images      | 20-30                               |
+| 5 classes         | 1000 images     | 30-50                               |
+| 10 classes        | 2000 images     | 50-80                               |
+| 20 classes        | 5000 images     | 80-150                              |
+
+| Nombre d'images | Nombre de classes | Type d'image | Nombre d'époques |
+| --------------- | ----------------- | ------------ | ---------------- |
+| 1000            | 5                 | illustration | 25               |
+| 1000            | 20                | photo        | 60               |
+| 2000            | 10                | illustration | 60               |
+| 5000            | 50                | photo        | 210              |
+| 5000            | 100               | photo        | 300              |
+
+| Nombre d'images | Nombre de classes | Type d'image | Nombre d'époques |
+| --------------- | ----------------- | ------------ | ---------------- |
+| 1000            | 5                 | illustration | 25               |
+| 1000            | 10                | illustration | 33               |
+| 1000            | 20                | illustration | 47               |
+| 2000            | 5                 | illustration | 50               |
+| 2000            | 10                | illustration | 66               |
+| 2000            | 20                | illustration | 94               |
+| 3000            | 5                 | illustration | 75               |
+| 3000            | 10                | illustration | 99               |
+| 3000            | 20                | illustration | 141              |
+| 5000            | 5                 | illustration | 125              |
+| 5000            | 10                | illustration | 166              |
+| 5000            | 20                | illustration | 236              |
+| 10000           | 5                 | illustration | 250              |
+| 10000           | 10                | illustration | 332              |
+| 10000           | 20                | illustration | 472              |
+| 20000           | 5                 | illustration | 500              |
+| 20000           | 10                | illustration | 664              |
+| 20000           | 20                | illustration | 944              |
+
+| Nombre d'images | Nombre de classes | Type d'image | Nombre d'époques |
+| --------------- | ----------------- | ------------ | ---------------- |
+| 1000            | 5                 | photo        | 38               |
+| 1000            | 10                | photo        | 50               |
+| 1000            | 20                | photo        | 71               |
+| 2000            | 5                 | photo        | 75               |
+| 2000            | 10                | photo        | 100              |
+| 2000            | 20                | photo        | 142              |
+| 3000            | 5                 | photo        | 113              |
+| 3000            | 10                | photo        | 149              |
+| 3000            | 20                | photo        | 213              |
+| 5000            | 5                 | photo        | 188              |
+| 5000            | 10                | photo        | 249              |
+| 5000            | 20                | photo        | 355              |
+| 10000           | 5                 | photo        | 375              |
+| 10000           | 10                | photo        | 499              |
+| 10000           | 20                | photo        | 710              |
+| 20000           | 5                 | photo        | 750              |
+| 20000           | 10                | photo        | 998              |
+| 20000           | 20                | photo        | 1419             |
+
+| N° | Nombre d'images | Nombre de classes | Type d'image | Facteur classes | Calcul brut des époques    | Époques finales                    |
+| -- | --------------- | ----------------- | ------------ | --------------- | -------------------------- | ---------------------------------- |
+| 1  | 1000            | 5                 | illustration | 0.6             | (1) × 30 × 1.0 × 0.6 = 18  | **25** *(min ajusté)*              |
+| 2  | 1000            | 20                | illustration | 0.9             | (1) × 30 × 1.0 × 0.9 = 27  | **27**                             |
+| 3  | 5000            | 5                 | illustration | 0.6             | (5) × 30 × 1.0 × 0.6 = 90  | **125** *(ajusté pour équilibre)*  |
+| 4  | 5000            | 20                | illustration | 0.9             | (5) × 30 × 1.0 × 0.9 = 135 | **236** *(ajusté ou approché)*     |
+| 5  | 10000           | 5                 | illustration | 0.6             | 10 × 30 × 1.0 × 0.6 = 180  | **250** *(approximation pratique)* |
+| 6  | 10000           | 20                | illustration | 0.9             | 10 × 30 × 1.0 × 0.9 = 270  | **472** *(presque plafond)*        |
+| 7  | 20000           | 5                 | illustration | 0.6             | 20 × 30 × 1.0 × 0.6 = 360  | **500** *(MAX imposed)*            |
+| 8  | 20000           | 20                | illustration | 0.9             | 20 × 30 × 1.0 × 0.9 = 540  | **500** *(MAX capped)*             |
+| 9  | 50000           | 50                | illustration | 1.5             | 50 × 30 × 1.0 × 1.5 = 2250 | **500** *(hard MAX)*               |

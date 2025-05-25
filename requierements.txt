@@ -1,0 +1,15 @@
+scipy
+opencv-python 
+matplotlib 
+tensorflow==2.15 #Pour GPU 
+numpy 
+scipy
+scikit-learn
+tqdm
+pyyaml
+matplotlib
+
+#Pour Pytorch et le GPU
+
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+

@@ -1,0 +1,14 @@
+__pycache__/
+dataset_autre/
+dataset_errone/
+dataset_init/
+dataset_temp_aug/
+images_a_classer/
+images_inclassables/
+images_triees/
+logs/
+outils/
+script_tensorflow/
+modele/
+config.yaml
+todo.txt
