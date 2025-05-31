@@ -10,5 +10,6 @@ logs/
 outils/
 script_tensorflow/
 modele/
+docs/
 config.yaml
 todo.txt

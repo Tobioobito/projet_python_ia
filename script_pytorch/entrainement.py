@@ -168,14 +168,24 @@ def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilen
         print(f"🗂️ {class_name} : {len(images)} images | Homogénéité = {mean_sim:.2f} | Qualité = {np.mean(quality_scores):.2f}")
 
 
-def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed=42):
+def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed):
     print("\n🔄 AUGMENTATION DES DONNÉES...")
 
     # Copier tout le dataset original dans le dossier de sortie
     if os.path.exists(augment_path):
         shutil.rmtree(augment_path)  # Supprime l'ancien dossier s'il existe pour éviter les doublons
 
-    shutil.copytree(base_path, augment_path)
+    os.makedirs(augment_path, exist_ok=True)
+
+    # 🔹 Copier uniquement les dossiers autorisés
+    for class_name in classes_folders:
+        source_dir = os.path.join(base_path, class_name)
+        dest_dir = os.path.join(augment_path, class_name)
+
+        if os.path.exists(source_dir):
+            shutil.copytree(source_dir, dest_dir)
+        else:
+            print(f"⚠️ Dossier introuvable : {source_dir}")
 
     random.seed(seed)
     torch.manual_seed(seed)
@@ -200,22 +210,16 @@ def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed
     class_images = defaultdict(list)
 
     for class_name in classes_folders:
-            full_class_path = os.path.join(base_path, class_name)  # Chemin complet
+        class_path = os.path.join(augment_path, class_name)
+        if not os.path.isdir(class_path):
+            continue
 
-            if not os.path.isdir(full_class_path):
-                print(f"⚠️ Chemin non trouvé : {class_name}")
-                continue
+        print(f"🔎 Traitement de la classe : {class_name}")
 
-            print(f"🔎 Traitement de la classe : {class_name}")
-            output_class_path = os.path.join(augment_path, class_name)
-            os.makedirs(output_class_path, exist_ok=True)
-
-            for fname in os.listdir(output_class_path):
-                if fname.lower().endswith((".png", ".jpg", ".jpeg")):
-                    original_path = os.path.join(full_class_path, fname)
-                    
-                    shutil.copy(original_path, output_class_path)  # Copie de l'image dans le dossier de sortie
-                    class_images[class_name].append(original_path)
+        for fname in os.listdir(class_path):
+            if fname.lower().endswith((".png", ".jpg", ".jpeg")):
+                full_path = os.path.join(class_path, fname)
+                class_images[class_name].append(full_path)
 
     # 3. Calculer combien d’images ajouter par classe
     counts = {label: len(paths) for label, paths in class_images.items()}
@@ -235,6 +239,11 @@ def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed
             image = Image.open(path).convert("RGB").resize((224, 224))
             aug_image = augmentation(image)
             aug_image.save(os.path.join(save_dir, f"aug_{i}.jpg"))
+
+
+#train_loader : pour l'apprentissage. Le modèle apprend à classer. Apprendre avec des exercices. données vues par le modèle pendant l'apprentissage.
+#val_loader : évaluation pendant l'entraînement, souvent pour détecter l’overfitting. . pour surveiller la convergence / overfitting. Vérifie les progrès à chaque époque d’entraînement. Faire des exercices similaires pour voir si tu progresses.
+#test_loader : données jamais vues par le modèle, utilisées à la toute fin pour l’évaluation finale. .pour évaluer la généralisation. Mesure la vraie performance finale.  Prouver que tu maîtrises vraiment, avec des questions nouvelles.
 
 def preparer_dataset(classes_autorisees, root_dir, type_images, batch_size, seed):
 
@@ -261,25 +270,11 @@ def preparer_dataset(classes_autorisees, root_dir, type_images, batch_size, seed
     if not dossiers_a_garder:
         raise ValueError("❌ Aucune classe valide trouvée dans le dataset. Vérifiez le fichier de config.")
     
-    # 🔹 Construire un mapping restreint
-    class_to_idx = {cls_name: idx for idx, cls_name in enumerate(dossiers_a_garder)}
-    print(class_to_idx)
     # 🔹 Créer un dataset temporaire pour charger les images
     full_dataset = datasets.ImageFolder(root=root_dir, transform=transform)
     
-    # 🔹 Filtrer les données en fonction du mapping
-    samples_filtres = []
-    for image_path, _ in full_dataset.samples:
-        class_name = os.path.basename(os.path.dirname(image_path))
-        if class_name in class_to_idx:
-            samples_filtres.append((image_path, class_to_idx[class_name]))
-
-    # 🔹 Appliquer les samples filtrés au dataset
-    full_dataset.samples = samples_filtres
-    print(full_dataset.samples)
-    full_dataset.class_to_idx = class_to_idx
-    print(full_dataset.class_to_idx)
     total_images = len(full_dataset)
+    print(full_dataset.class_to_idx)
     print(total_images)
     # Calculer les longueurs de chaque split
     train_len = int(0.7 * total_images)
@@ -310,15 +305,65 @@ def creer_modele(image_type: str, num_classes: int, device):
 
 
 
-def entrainer_modele(model, train_loader, val_loader, epochs, lr, device, model_path_name):
+
+def compter_nombre_images(aug_temp_dir, classes_folders):
+    total_images = 0
+
+    for classe in classes_folders:
+        dossier_classe = os.path.join(aug_temp_dir, classe)
+        total_images += len(os.listdir(dossier_classe))
+
+    return total_images
+
+"""
+def compter_nombre_images(aug_temp_dir):
+    total_images = 0
+
+    for dossier in os.listdir(aug_temp_dir):
+        chemin_dossier = os.path.join(aug_temp_dir, dossier)
+        if os.path.isdir(chemin_dossier):
+            total_images += len(os.listdir(chemin_dossier))
+
+    return total_images
+"""
+
+
+def calculer_nombre_epochs(nombre_images, nombre_classes, type_image):
+ 
+    base_images = 1000        # Référence : 1000 images
+    base_classes = 10         # Référence : 10 classes
+    base_epochs = 30          # 30 époques pour la base
+
+    # Facteurs multiplicateurs
+    facteur_images = nombre_images / base_images
+    facteur_classes = (nombre_classes / base_classes) ** 0.5  # racine carrée : évite la croissance explosive
+    facteur_type = 1.3 if type_image == "illustration" else 1.0
+
+    epochs = int(base_epochs * facteur_images * facteur_classes * facteur_type)
+
+    # Plafond et plancher pour éviter les extrêmes
+    epochs = max(10, min(epochs, 500))
+
+    return epochs
+
+
+#val_loss = À quel point le modèle est sûr de ses prédictions (même s’il se trompe).
+#val_accuracy = À quel point le modèle a raison (peu importe la confiance dans sa prédiction).
+
+#val_loss est une valeur positive flottante (souvent 0.1 – 2.0, mais peut être bien plus si le modèle est instable).
+#val_acc est entre 0 et 1 (0–100% exprimé en ratio).
+
+def entrainer_modele(model, train_loader, val_loader, epochs, learning_rate, device, model_path_name):
 
     print("CUDA disponible :", torch.cuda.is_available())
     print("Nom du GPU :", device)
     model.to(device)
     #patience = round(epochs/4)
     patience = 10
+    poids = 2.0  # 🔧 Poids de l'accuracy dans le score global (ajustable)
+
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     meilleur_modele = copy.deepcopy(model.state_dict())
     meilleure_val_loss = float('inf')
@@ -339,7 +384,14 @@ def entrainer_modele(model, train_loader, val_loader, epochs, lr, device, model_
 
             optimizer.zero_grad()
             outputs = model(inputs)
+            #print("Sortie modèle :", outputs[0])
+            #print("Sortie modèle :", outputs[:2])
+            #print(f"\nLabels batch :", labels)
+            #print(f"\nMax label :", labels.max().item())
+            #print(f"\nShape sortie modèle :", outputs.shape)
+
             loss = criterion(outputs, labels)
+
             loss.backward()
             optimizer.step()
 
@@ -358,10 +410,11 @@ def entrainer_modele(model, train_loader, val_loader, epochs, lr, device, model_
 
         print(f"✅ Train loss: {total_train_loss:.4f} | Train acc: {train_acc:.2%}")
         print(f"🧪 Val loss: {val_loss:.4f} | Val acc: {val_acc:.2%}")
-
+        # 🧮 Calcul du score combiné (plus bas = mieux)
+        score = val_loss - (val_acc * poids)
         # Early stopping
-        if val_loss < meilleure_val_loss:
-            meilleure_val_loss = val_loss
+        if score < meilleure_val_loss:
+            meilleure_val_loss = score
             meilleur_modele = copy.deepcopy(model.state_dict())
             epochs_sans_amélioration = 0
             print("💾 Meilleur modèle sauvegardé !")

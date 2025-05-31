@@ -7,6 +7,8 @@ import shutil
 from datetime import datetime
 import sys
 
+#from ultralytics import YOLO
+
 # 📌 Création dossier logs
 
 def activer_log(dossier_log):
@@ -42,8 +44,23 @@ def recuperer_model(num_classes, device, model_data):
     # Étape 3 – utiliser le modèle pour la prédiction
     return model.eval()
 
+"""
+#yolo_model = YOLO("yolov8n.pt")  # ajuster le modèle selon précision/vitesse si besoin
+
+def contient_une_seule_personne(image_path):
+
+    results = yolo_model(image_path)[0]
+    personnes = [cls for cls in results.boxes.cls if int(cls) == 0]
+    return len(personnes) == 1
+
+"""
 # 🔹 Prédiction
 def predire_image(image_path, model, device, img_height, img_width, list_classes):
+    """
+    if not contient_une_seule_personne(image_path):
+        print(f"🚫 Ignorée (plusieurs ou aucune personne) : {os.path.basename(image_path)}")
+        return None  # ou ("inclassable", 0.0) si tu veux une valeur de repli
+    """
     transform = transforms.Compose([
         transforms.Resize((img_height, img_width)),
         transforms.ToTensor(),
@@ -111,8 +128,6 @@ def ecrire_rapport(total_images_avant, images_a_classer, images_triees):
     print(f"Nombre d'images restantes (non triées) : {total_images_apres}\n")
 
     print("🔹 Détails par classe :")
-    #Attention il faudra indiquer les classes derterminer par la config 
-    #Ou indiquer creer automatiquement les dossier
     for dossier in os.listdir(images_triees):
         chemin_classe = os.path.join(images_triees, dossier)
         if os.path.isdir(chemin_classe):

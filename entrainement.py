@@ -30,7 +30,7 @@ import yaml
 import script_pytorch.entrainement as entrainement
 
 # log nettoyage automatique
-
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 # 📌 Paramètres
 # Chargement du fichier de configuration
 with open("config.yaml", "r") as file:
@@ -41,57 +41,26 @@ is_illustration = image_type == "illustration"
 
 dataset_dir = config['dataset']['base_path']
 aug_temp_dir = config['dataset']['augment_path']
-classes_folders = config['dataset']['classes']
+
+classes_exclues = config['dataset']['classes_exclues']
+
+# 🔹 Lister tous les dossiers du dataset sauf ceux à exclure
+classes_folders = sorted([
+    d for d in os.listdir(dataset_dir)
+    if os.path.isdir(os.path.join(dataset_dir, d)) and d not in classes_exclues
+])
+
+#classes_folders = config['dataset']['classes']
 nombre_classes = len(classes_folders)
 dossier_logs = config['logs']['entrainement']
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model_path_name = config['model_parameters']['path_name']
 
+batch_size = config['model_parameters']['batch_size']
+seed = config['model_parameters']['seed']
+lr= config['model_parameters']['seed']
 
-def compter_nombre_images(aug_temp_dir, classes_folders):
-    total_images = 0
-
-    for classe in classes_folders:
-        dossier_classe = os.path.join(aug_temp_dir, classe)
-        total_images += len(os.listdir(dossier_classe))
-
-    return total_images
-
-"""
-def compter_nombre_images(aug_temp_dir):
-    total_images = 0
-
-    for dossier in os.listdir(aug_temp_dir):
-        chemin_dossier = os.path.join(aug_temp_dir, dossier)
-        if os.path.isdir(chemin_dossier):
-            total_images += len(os.listdir(chemin_dossier))
-
-    return total_images
-"""
-
-
-def calculer_nombre_epochs(nombre_images, nombre_classes, type_image):
- 
-    base_images = 1000        # Référence : 1000 images
-    base_classes = 10         # Référence : 10 classes
-    base_epochs = 30          # 30 époques pour la base
-
-    # Facteurs multiplicateurs
-    facteur_images = nombre_images / base_images
-    facteur_classes = (nombre_classes / base_classes) ** 0.5  # racine carrée : évite la croissance explosive
-    facteur_type = 1.3 if type_image == "illustration" else 1.0
-
-    epochs = int(base_epochs * facteur_images * facteur_classes * facteur_type)
-
-    # Plafond et plancher pour éviter les extrêmes
-    epochs = max(10, min(epochs, 500))
-
-    return epochs
-
-batch_size = 32
-seed = 42
-lr=1e-4
 start_time = time.time()  # Démarre le chrono
 
 entrainement.activer_log(dossier_logs)
@@ -102,16 +71,16 @@ entrainement.nettoyer_dataset(dataset_dir, classes_folders)
 mobilenet = entrainement.charger_mobilenet(device)
 entrainement.evaluer_dataset(dataset_dir, image_type, device, classes_folders, mobilenet)
 # 🔹 Étape 3 : Augmentation
-entrainement.augmenter_dataset(dataset_dir, image_type, aug_temp_dir, classes_folders)
+entrainement.augmenter_dataset(dataset_dir, image_type, aug_temp_dir, classes_folders, seed)
 # 🔹 Étape 4 : Evaluation après augmentation
 entrainement.evaluer_dataset(aug_temp_dir, image_type, device, classes_folders, mobilenet)
 # 🔹 Étape 5 : Préparer le dataset
 train_loader, val_loader, test_loader = entrainement.preparer_dataset(classes_folders, aug_temp_dir, image_type, batch_size, seed)
+nombre_images = entrainement.compter_nombre_images(aug_temp_dir, classes_folders)
+epoch = entrainement.calculer_nombre_epochs(nombre_images, nombre_classes, image_type)
 # 🔹 Étape 6 : Creer le modele
 model = entrainement.creer_modele(image_type, nombre_classes, device)
 # 🔹 Étape 7 : Entrainer le modele
-nombre_images = compter_nombre_images(aug_temp_dir, classes_folders)
-epoch = calculer_nombre_epochs(nombre_images, nombre_classes, image_type)
 model = entrainement.entrainer_modele(model, train_loader, val_loader, epoch, lr, device, model_path_name)
 # 🔹 Étape 8 : Evaluation de l'entrainement
 entrainement.evaluer_modele(model, test_loader, nn.CrossEntropyLoss(), device)

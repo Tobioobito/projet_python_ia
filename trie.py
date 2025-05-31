@@ -16,15 +16,24 @@ with open("config.yaml", "r") as file:
 dossier_log = config['logs']['trie']
 images_a_classer = config['images_path']['images_a_classer']
 images_triees = config['images_path']['images_triees']
-num_classes = len(config['dataset']['classes'])
+dataset_dir = config['dataset']['base_path']
+
+classes_exclues = config['dataset']['classes_exclues']
+
+# 🔹 Lister tous les dossiers du dataset sauf ceux à exclure
+list_classes = sorted([
+    d for d in os.listdir(dataset_dir)
+    if os.path.isdir(os.path.join(dataset_dir, d)) and d not in classes_exclues
+])
+
+num_classes = len(list_classes)
+
 total_images_avant = len([f for f in os.listdir(images_a_classer) if f.lower().endswith(('.png', '.jpg', '.jpeg'))])
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu") #(CPU ou GPU)
 
 img_height = config['model_parameters']['img_height']
 img_width = config['model_parameters']['img_width']
 model_data = config['model_parameters']['path_name']
-
-list_classes = config['dataset']['classes']
 
 start_time = time.time()  # Démarre le chrono
 
