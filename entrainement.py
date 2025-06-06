@@ -59,7 +59,10 @@ model_path_name = config['model_parameters']['path_name']
 
 batch_size = config['model_parameters']['batch_size']
 seed = config['model_parameters']['seed']
-lr= config['model_parameters']['seed']
+lr= config['model_parameters']['lr']
+
+img_height = config['model_parameters']['img_height']
+img_width = config['model_parameters']['img_width']
 
 start_time = time.time()  # Démarre le chrono
 
@@ -69,21 +72,21 @@ entrainement.activer_log(dossier_logs)
 entrainement.nettoyer_dataset(dataset_dir, classes_folders)
 # 🔹 Étape 2 : Evaluation avant augmentation
 mobilenet = entrainement.charger_mobilenet(device)
-entrainement.evaluer_dataset(dataset_dir, image_type, device, classes_folders, mobilenet)
+entrainement.evaluer_dataset(dataset_dir, image_type, device, classes_folders, mobilenet, img_height, img_width)
 # 🔹 Étape 3 : Augmentation
-entrainement.augmenter_dataset(dataset_dir, image_type, aug_temp_dir, classes_folders, seed)
+#entrainement.augmenter_dataset(dataset_dir, image_type, aug_temp_dir, classes_folders, seed, img_height, img_width)
 # 🔹 Étape 4 : Evaluation après augmentation
-entrainement.evaluer_dataset(aug_temp_dir, image_type, device, classes_folders, mobilenet)
+#entrainement.evaluer_dataset(aug_temp_dir, image_type, device, classes_folders, mobilenet, img_height, img_width)
 # 🔹 Étape 5 : Préparer le dataset
-train_loader, val_loader, test_loader = entrainement.preparer_dataset(classes_folders, aug_temp_dir, image_type, batch_size, seed)
-nombre_images = entrainement.compter_nombre_images(aug_temp_dir, classes_folders)
-epoch = entrainement.calculer_nombre_epochs(nombre_images, nombre_classes, image_type)
+#train_loader, val_loader, test_loader = entrainement.preparer_dataset(classes_folders, aug_temp_dir, image_type, batch_size, seed, img_height, img_width)
+#nombre_images = entrainement.compter_nombre_images(aug_temp_dir, classes_folders)
+#epoch = entrainement.calculer_nombre_epochs(nombre_images, nombre_classes, image_type)
 # 🔹 Étape 6 : Creer le modele
-model = entrainement.creer_modele(image_type, nombre_classes, device)
+#model = entrainement.creer_modele(image_type, nombre_classes, device)
 # 🔹 Étape 7 : Entrainer le modele
-model = entrainement.entrainer_modele(model, train_loader, val_loader, epoch, lr, device, model_path_name)
+#model = entrainement.entrainer_modele(model, train_loader, val_loader, epoch, lr, device, model_path_name)
 # 🔹 Étape 8 : Evaluation de l'entrainement
-entrainement.evaluer_modele(model, test_loader, nn.CrossEntropyLoss(), device)
+#entrainement.evaluer_modele(model, test_loader, nn.CrossEntropyLoss(), device, mode="Test")
 #🔹 Étape 9 : Nettoyage et bilan
 entrainement.supprimer_dossier_temp_aug(aug_temp_dir)
 

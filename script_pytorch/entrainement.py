@@ -99,34 +99,20 @@ def nettoyer_dataset(dataset_dir, classes_folders):
 # 🧹 1. Evaluation
 # --------------------------------------------------
 
-def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilenet):
-    """
-    Évalue les images du dataset en extrayant les features et en calculant la similarité et la qualité.
-
-    Args:
-    - config (dict): Configuration YAML contenant les chemins des datasets.
-    - is_illustration (bool): True si c'est un dataset d'illustration, False pour des photos.
-    - device (torch.device): L'appareil utilisé (CPU ou GPU).
-    - mobilenet (torch.nn.Module): Le modèle MobileNet pour l'extraction de features.
-    """
-    
-    # 🔹 Extraction des chemins à partir du fichier de config
-    
+def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilenet, img_height, img_width):
     print("\n📊 ÉVALUATION DU DATASET :", dataset_dir)
 
-    # 🔹 Transformation des images pour MobileNet
     preprocess = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((img_height, img_width)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
     class_images = defaultdict(list)
 
-    # 🔹 Extraction des features par classe
     for class_name in classes_paths:
-        full_class_path = os.path.join(dataset_dir, class_name)  # Chemin complet
-        print(f"🔎 Analyse du dossier : {class_name}")
+        full_class_path = os.path.join(dataset_dir, class_name)
+        print(f"\n🔎 Analyse du dossier : {class_name}")
         
         if not os.path.isdir(full_class_path):
             print(f"⚠️ Chemin non trouvé : {full_class_path}")
@@ -143,32 +129,76 @@ def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilen
             with torch.no_grad():
                 features = mobilenet(img_tensor).cpu().numpy()[0]
 
-            img_array = np.array(img.resize((224, 224)))
-            class_images[class_name].append((features, img_array))
+            img_array = np.array(img.resize((img_height, img_width)))
+            class_images[class_name].append((fname, features, img_array))
+            print(f"✅ Image traitée : {fname}")
 
-    # 🔹 Rapport de l'évaluation
-    print("\n🔎 Rapport :")
+    print("\n📈 Rapport détaillé par classe :")
+    
     for class_name, items in class_images.items():
-        embeddings = [feat for feat, _ in items]
-        images = [img for _, img in items]
+        print(f"\n📂 Classe : {class_name} | Nombre d’images : {len(items)}")
 
+        if len(items) == 0:
+            print("⚠️ Aucune image à évaluer.")
+            continue
+
+        filenames = [fname for fname, _, _ in items]
+        embeddings = [feat for _, feat, _ in items]
+        images = [img for _, _, img in items]
+
+        # --- Homogénéité individuelle
         if len(embeddings) >= 2:
             sim_matrix = cosine_similarity(embeddings)
-            upper_triangle = sim_matrix[np.triu_indices(len(sim_matrix), k=1)]
-            mean_sim = np.mean(upper_triangle)
+            per_image_similarities = []
+            for i in range(len(sim_matrix)):
+                sim_scores = [sim_matrix[i][j] for j in range(len(sim_matrix)) if j != i]
+                mean_sim_i = np.mean(sim_scores)
+                per_image_similarities.append(mean_sim_i)
         else:
-            mean_sim = 1.0
+            per_image_similarities = [1.0 for _ in range(len(embeddings))]
 
+        # --- Qualité individuelle
         quality_scores = []
         for img in images:
             gray = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_RGB2GRAY)
             score = np.std(gray) if is_illustration else cv2.Laplacian(gray, cv2.CV_64F).var()
             quality_scores.append(score)
 
-        print(f"🗂️ {class_name} : {len(images)} images | Homogénéité = {mean_sim:.2f} | Qualité = {np.mean(quality_scores):.2f}")
+        # --- Affichage détaillé image par image
+        for idx, fname in enumerate(filenames):
+            sim = per_image_similarities[idx]
+            qual = quality_scores[idx]
+
+            # Catégorisation homogénéité
+            if sim < 0.5:
+                sim_flag = "🔴 Mauvais"
+            elif sim < 0.7:
+                sim_flag = "🟡 Moyen"
+            elif sim < 0.9:
+                sim_flag = "🟢 Bon"
+            else:
+                sim_flag = "🔵 Excellent"
+
+            # Catégorisation qualité
+            if qual < 30:
+                qual_flag = "🔴 Mauvais"
+            elif qual < 50:
+                qual_flag = "🟡 Moyen"
+            elif qual < 100:
+                qual_flag = "🟢 Bon"
+            else:
+                qual_flag = "🔵 Excellent"
+
+            print(f"🔹 {fname} | Homogénéité : {sim:.4f} ({sim_flag}) | Qualité : {qual:.2f} ({qual_flag})")
 
 
-def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed):
+        # --- Moyennes globales
+        mean_sim = np.mean(per_image_similarities)
+        mean_quality = np.mean(quality_scores)
+        print(f"\n📊 Moyenne homogénéité (classe) : {mean_sim:.4f}")
+        print(f"📊 Moyenne qualité (classe)     : {mean_quality:.2f}")
+
+def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed, img_height, img_width):
     print("\n🔄 AUGMENTATION DES DONNÉES...")
 
     # Copier tout le dataset original dans le dossier de sortie
@@ -194,7 +224,7 @@ def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed
     if image_type == "illustration":
         augmentation = transforms.Compose([
             transforms.RandomRotation(degrees=5),
-            transforms.RandomResizedCrop(size=224, scale=(0.9, 1.0)),
+            transforms.RandomResizedCrop(size=img_height, scale=(0.9, 1.0)),
             transforms.RandomApply([transforms.ColorJitter(contrast=0.1)], p=0.7),
             transforms.RandomAffine(degrees=0, translate=(0.05, 0.05)),
         ])
@@ -202,7 +232,7 @@ def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed
         augmentation = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomRotation(10),
-            transforms.RandomResizedCrop(224, scale=(0.9, 1.0)),
+            transforms.RandomResizedCrop(size=img_height, scale=(0.9, 1.0)),
             transforms.ColorJitter(contrast=0.1)
         ])
 
@@ -236,16 +266,16 @@ def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed
         # 4. Générer des images augmentées
         for i in tqdm(range(extra_needed), desc=f""):
             path = random.choice(image_paths)
-            image = Image.open(path).convert("RGB").resize((224, 224))
+            image = Image.open(path).convert("RGB").resize((img_height, img_width))
             aug_image = augmentation(image)
             aug_image.save(os.path.join(save_dir, f"aug_{i}.jpg"))
 
 
-#train_loader : pour l'apprentissage. Le modèle apprend à classer. Apprendre avec des exercices. données vues par le modèle pendant l'apprentissage.
-#val_loader : évaluation pendant l'entraînement, souvent pour détecter l’overfitting. . pour surveiller la convergence / overfitting. Vérifie les progrès à chaque époque d’entraînement. Faire des exercices similaires pour voir si tu progresses.
-#test_loader : données jamais vues par le modèle, utilisées à la toute fin pour l’évaluation finale. .pour évaluer la généralisation. Mesure la vraie performance finale.  Prouver que tu maîtrises vraiment, avec des questions nouvelles.
+def preparer_dataset(classes_autorisees, root_dir, type_images, batch_size, seed, img_height, img_width):
 
-def preparer_dataset(classes_autorisees, root_dir, type_images, batch_size, seed):
+    #train_loader : pour l'apprentissage. Le modèle apprend à classer. Apprendre avec des exercices. données vues par le modèle pendant l'apprentissage.
+    #val_loader : évaluation pendant l'entraînement, souvent pour détecter l’overfitting. . pour surveiller la convergence / overfitting. Vérifie les progrès à chaque époque d’entraînement. Faire des exercices similaires pour voir si tu progresses.
+    #test_loader : données jamais vues par le modèle, utilisées à la toute fin pour l’évaluation finale. .pour évaluer la généralisation. Mesure la vraie performance finale.  Prouver que tu maîtrises vraiment, avec des questions nouvelles.
 
     print(f"\n🔄 Préparation du dataset : {root_dir}")
     print(f"🔎 Classes autorisées : {classes_autorisees}")
@@ -255,12 +285,12 @@ def preparer_dataset(classes_autorisees, root_dir, type_images, batch_size, seed
     # Transformation en fonction du type d'image
     if type_images == "illustration":
         transform = transforms.Compose([
-            transforms.Resize((224, 224)),
+            transforms.Resize((img_height, img_width)),
             transforms.ToTensor(),
         ])
     else:  # photo
         transform = transforms.Compose([
-            transforms.Resize((224, 224)),
+            transforms.Resize((img_height, img_width)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
         ])
@@ -303,9 +333,6 @@ def creer_modele(image_type: str, num_classes: int, device):
     print("Nom du GPU :", device)
     return model.to(device)
 
-
-
-
 def compter_nombre_images(aug_temp_dir, classes_folders):
     total_images = 0
 
@@ -346,14 +373,13 @@ def calculer_nombre_epochs(nombre_images, nombre_classes, type_image):
 
     return epochs
 
-
-#val_loss = À quel point le modèle est sûr de ses prédictions (même s’il se trompe).
-#val_accuracy = À quel point le modèle a raison (peu importe la confiance dans sa prédiction).
-
-#val_loss est une valeur positive flottante (souvent 0.1 – 2.0, mais peut être bien plus si le modèle est instable).
-#val_acc est entre 0 et 1 (0–100% exprimé en ratio).
-
 def entrainer_modele(model, train_loader, val_loader, epochs, learning_rate, device, model_path_name):
+
+    #val_loss = À quel point le modèle est sûr de ses prédictions (même s’il se trompe).
+    #val_accuracy = À quel point le modèle a raison (peu importe la confiance dans sa prédiction).
+
+    #val_loss est une valeur positive flottante (souvent 0.1 – 2.0, mais peut être bien plus si le modèle est instable).
+    #val_acc est entre 0 et 1 (0–100% exprimé en ratio).
 
     print("CUDA disponible :", torch.cuda.is_available())
     print("Nom du GPU :", device)
@@ -401,23 +427,32 @@ def entrainer_modele(model, train_loader, val_loader, epochs, learning_rate, dev
             correct += (predicted == labels).sum().item()
 
         train_acc = correct / total
-        val_loss, val_acc = evaluer_modele(model, val_loader, criterion, device)
+        val_loss, val_acc = evaluer_modele(model, val_loader, criterion, device, mode="Validation")
 
         train_losses.append(total_train_loss)
         val_losses.append(val_loss)
         train_accuracies.append(train_acc)
         val_accuracies.append(val_acc)
 
+        score = val_loss - (val_acc * poids) # Calcul du score combiné (plus bas = mieux)
+
         print(f"✅ Train loss: {total_train_loss:.4f} | Train acc: {train_acc:.2%}")
         print(f"🧪 Val loss: {val_loss:.4f} | Val acc: {val_acc:.2%}")
-        # 🧮 Calcul du score combiné (plus bas = mieux)
-        score = val_loss - (val_acc * poids)
-        # Early stopping
+        print(f"🧮 Score : {score:.2f}")
+
         if score < meilleure_val_loss:
             meilleure_val_loss = score
             meilleur_modele = copy.deepcopy(model.state_dict())
+            meilleure_epoque = epoch + 1  # +1 car les époques sont 0-indexées
+            meilleure_val_acc = val_acc
+            meilleure_val_loss_brute = val_loss
+            meilleure_val_score = score
             epochs_sans_amélioration = 0
-            print("💾 Meilleur modèle sauvegardé !")
+            print(f"💾 Meilleur modèle sauvegardé.")
+                #f"(Val Loss : {meilleure_val_loss_brute:.4f} | "
+                #f"Val Acc : {meilleure_val_acc:.2%} | "
+                #f"Score : {meilleure_val_score:.4f})")
+
         else:
             epochs_sans_amélioration += 1
             print(f"⏳ Pas d'amélioration ({epochs_sans_amélioration}/{patience})")
@@ -429,7 +464,10 @@ def entrainer_modele(model, train_loader, val_loader, epochs, learning_rate, dev
     # Charger le meilleur modèle
     model.load_state_dict(meilleur_modele)
     torch.save(model.state_dict(), model_path_name)
-    print("💾 Modèle sauvegardé dans :", model_path_name)
+    print(f"\n🏁 Entraînement terminé. Meilleur modèle à l'époque {meilleure_epoque} "
+      f"(Val Loss : {meilleure_val_loss_brute:.4f} | "
+      f"Val Acc : {meilleure_val_acc:.2%} | "
+      f"Score : {meilleure_val_score:.4f})")
 
     # Courbes
     plt.figure(figsize=(12, 5))
@@ -455,7 +493,7 @@ def entrainer_modele(model, train_loader, val_loader, epochs, learning_rate, dev
 
     return model
 
-def evaluer_modele(model, dataloader, criterion, device):
+def evaluer_modele(model, dataloader, criterion, device, mode="Test"):
     model.eval()
     total_loss = 0
     correct = 0
@@ -474,7 +512,7 @@ def evaluer_modele(model, dataloader, criterion, device):
 
     avg_loss = total_loss / len(dataloader)
     accuracy = correct / total
-    print(f"\n📊 Test Loss : {avg_loss:.4f} | Test Accuracy : {accuracy:.2%}")
+    print(f"\n📊 [{mode}] Loss : {avg_loss:.4f} | Accuracy : {accuracy:.2%}")
     return avg_loss, accuracy
 
 def supprimer_dossier_temp_aug(aug_temp_dir):
