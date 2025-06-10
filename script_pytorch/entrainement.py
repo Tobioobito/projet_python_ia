@@ -1,34 +1,32 @@
+# Imports de la bibliothèque standard
+import argparse
+import copy
 import os
-from datetime import datetime
-
+import random
+import re
+import shutil
 import sys
 import time
-import re
-
-import cv2
-import torch
-import numpy as np
-from torchvision import models, transforms, datasets
-from sklearn.metrics.pairwise import cosine_similarity
 from collections import defaultdict
-from PIL import Image
-import shutil
+from datetime import datetime
 
-import random
+# Imports de bibliothèques tierces
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import yaml
+from PIL import Image
+from sklearn.metrics.pairwise import cosine_similarity
+from torch.utils.data import DataLoader, random_split
+from torchvision import datasets, models, transforms
 from tqdm import tqdm
 
-import argparse
-
-import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
-
-import torch.optim as optim
-import copy
-
-import yaml
+# Imports locaux
 import script_pytorch.cnn as cnn
 
-import matplotlib.pyplot as plt
 
 # 📌 Création dossier logs
 
@@ -99,8 +97,50 @@ def nettoyer_dataset(dataset_dir, classes_folders):
 # 🧹 1. Evaluation
 # --------------------------------------------------
 
+def compter_references_par_classe(total_images, max_refs=10):
+
+    percentage=0.05
+
+    if total_images <= 0:
+        return 0
+
+    num_refs = int(total_images * percentage)
+    return min(num_refs, max_refs)
+
+def chercher_references_par_classe(class_dir, required_count):
+
+    reference_images = []
+
+    for fname in os.listdir(class_dir):
+        if "reference" in fname.lower() and fname.lower().endswith((".jpg", ".jpeg", ".png")):
+            reference_images.append(os.path.join(class_dir, fname))
+
+    if len(reference_images) < required_count:
+        raise ValueError(
+            f"❌ Classe '{os.path.basename(class_dir)}' : {len(reference_images)} image(s) de référence trouvée(s), "
+            f"il en faut au moins {required_count}. Ajoutez davantage d’images avec 'reference' dans le nom."
+        )
+    
+    else:
+        print(f"✅ Classe '{os.path.basename(class_dir)}' : {len(reference_images)} image(s) de référence validée(s).")
+    return reference_images
+
+
+def extract_feature(image_path, model, transform, device):
+    img = Image.open(image_path).convert("RGB")
+    img_tensor = transform(img).unsqueeze(0).to(device)
+    with torch.no_grad():
+        feat = model(img_tensor).cpu().numpy()[0]
+    return feat
+
+
 def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilenet, img_height, img_width):
     print("\n📊 ÉVALUATION DU DATASET :", dataset_dir)
+
+    # 🔧 Transformation de l'image pour MobileNet :
+    # - Redimensionnement (Resize)
+    # - Conversion en tenseur (ToTensor)
+    # - Normalisation avec les valeurs d'ImageNet
 
     preprocess = transforms.Compose([
         transforms.Resize((img_height, img_width)),
@@ -113,90 +153,85 @@ def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilen
     for class_name in classes_paths:
         full_class_path = os.path.join(dataset_dir, class_name)
         print(f"\n🔎 Analyse du dossier : {class_name}")
-        
+
         if not os.path.isdir(full_class_path):
             print(f"⚠️ Chemin non trouvé : {full_class_path}")
             continue
 
-        for fname in os.listdir(full_class_path):
-            if not fname.lower().endswith((".png", ".jpg", ".jpeg")):
+        all_files = [f for f in os.listdir(full_class_path)
+                     if f.lower().endswith((".png", ".jpg", ".jpeg"))]
+
+        # Sélection des références
+        required_refs = compter_references_par_classe(len(all_files))
+        try:
+            reference_paths = chercher_references_par_classe(full_class_path, required_refs)
+        except ValueError as e:
+            print(e)
+            continue
+
+        # Extraction des vecteurs de référence
+        reference_features = []
+        for ref_path in reference_paths:
+            feat = extract_feature(ref_path, mobilenet, preprocess, device)
+            reference_features.append(feat)
+
+        reference_features = np.array(reference_features)
+
+        # Vérification homogénéité des références
+        if len(reference_features) >= 2:
+            sim_matrix = cosine_similarity(reference_features)
+            upper_triangle = sim_matrix[np.triu_indices(len(sim_matrix), k=1)]
+            mean_ref_similarity = np.mean(upper_triangle)
+            if mean_ref_similarity < 0.7:
+                print(f"⚠️ Références trop hétérogènes (score : {mean_ref_similarity:.2f})")
                 continue
+            else:
+                print(f"✅ Références valides (score : {mean_ref_similarity:.2f})")
+        else:
+            mean_ref_similarity = 1.0
 
+        # Évaluation des autres images (y compris les références pour comparaison)
+        for fname in all_files:
             img_path = os.path.join(full_class_path, fname)
+            feat = extract_feature(img_path, mobilenet, preprocess, device)
+
+            # Homogénéité : moyenne de similarité avec les références
+            similarities = cosine_similarity([feat], reference_features)[0]
+            mean_similarity = np.mean(similarities)
+
+            # Qualité
             img = Image.open(img_path).convert("RGB")
-            img_tensor = preprocess(img).unsqueeze(0).to(device)
+            img_resized = img.resize((img_height, img_width))
+            img_array = np.array(img_resized)
+            gray = cv2.cvtColor(img_array.astype(np.uint8), cv2.COLOR_RGB2GRAY)
+            quality_score = np.std(gray) if is_illustration else cv2.Laplacian(gray, cv2.CV_64F).var()
 
-            with torch.no_grad():
-                features = mobilenet(img_tensor).cpu().numpy()[0]
+            class_images[class_name].append((fname, mean_similarity, quality_score))
 
-            img_array = np.array(img.resize((img_height, img_width)))
-            class_images[class_name].append((fname, features, img_array))
-            print(f"✅ Image traitée : {fname}")
+            print(f"✅ Image évaluée : {fname}")
 
-    print("\n📈 Rapport détaillé par classe :")
-    
+    # Rapport final par classe
     for class_name, items in class_images.items():
         print(f"\n📂 Classe : {class_name} | Nombre d’images : {len(items)}")
 
-        if len(items) == 0:
+        if not items:
             print("⚠️ Aucune image à évaluer.")
             continue
 
-        filenames = [fname for fname, _, _ in items]
-        embeddings = [feat for _, feat, _ in items]
-        images = [img for _, _, img in items]
+        items.sort(key=lambda x: x[1], reverse=True)  # tri par homogénéité décroissante
 
-        # --- Homogénéité individuelle
-        if len(embeddings) >= 2:
-            sim_matrix = cosine_similarity(embeddings)
-            per_image_similarities = []
-            for i in range(len(sim_matrix)):
-                sim_scores = [sim_matrix[i][j] for j in range(len(sim_matrix)) if j != i]
-                mean_sim_i = np.mean(sim_scores)
-                per_image_similarities.append(mean_sim_i)
-        else:
-            per_image_similarities = [1.0 for _ in range(len(embeddings))]
+        for fname, sim, qual in items:
+            sim_flag = "🔴 Mauvais" if sim < 0.5 else "🟡 Moyen" if sim < 0.7 else "🟢 Bon" if sim < 0.9 else "🔵 Excellent"
+            qual_flag = "🔴 Mauvais" if qual < 30 else "🟡 Moyen" if qual < 50 else "🟢 Bon" if qual < 100 else "🔵 Excellent"
+            is_reference = "⭐" if os.path.join(dataset_dir, class_name, fname) in reference_paths else " "
+            print(f"🔹 {fname} {is_reference} | Homogénéité : {sim:.4f} ({sim_flag}) | Qualité : {qual:.2f} ({qual_flag})")
+            #print(f"🔹 {fname} | Homogénéité : {sim:.4f} ({sim_flag}) | Qualité : {qual:.2f} ({qual_flag})")
 
-        # --- Qualité individuelle
-        quality_scores = []
-        for img in images:
-            gray = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_RGB2GRAY)
-            score = np.std(gray) if is_illustration else cv2.Laplacian(gray, cv2.CV_64F).var()
-            quality_scores.append(score)
+        mean_sim = np.mean([sim for _, sim, _ in items])
+        mean_qual = np.mean([qual for _, _, qual in items])
+        print(f"\n📊 Moyenne homogénéité : {mean_sim:.4f}")
+        print(f"📊 Moyenne qualité     : {mean_qual:.2f}")
 
-        # --- Affichage détaillé image par image
-        for idx, fname in enumerate(filenames):
-            sim = per_image_similarities[idx]
-            qual = quality_scores[idx]
-
-            # Catégorisation homogénéité
-            if sim < 0.5:
-                sim_flag = "🔴 Mauvais"
-            elif sim < 0.7:
-                sim_flag = "🟡 Moyen"
-            elif sim < 0.9:
-                sim_flag = "🟢 Bon"
-            else:
-                sim_flag = "🔵 Excellent"
-
-            # Catégorisation qualité
-            if qual < 30:
-                qual_flag = "🔴 Mauvais"
-            elif qual < 50:
-                qual_flag = "🟡 Moyen"
-            elif qual < 100:
-                qual_flag = "🟢 Bon"
-            else:
-                qual_flag = "🔵 Excellent"
-
-            print(f"🔹 {fname} | Homogénéité : {sim:.4f} ({sim_flag}) | Qualité : {qual:.2f} ({qual_flag})")
-
-
-        # --- Moyennes globales
-        mean_sim = np.mean(per_image_similarities)
-        mean_quality = np.mean(quality_scores)
-        print(f"\n📊 Moyenne homogénéité (classe) : {mean_sim:.4f}")
-        print(f"📊 Moyenne qualité (classe)     : {mean_quality:.2f}")
 
 def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed, img_height, img_width):
     print("\n🔄 AUGMENTATION DES DONNÉES...")

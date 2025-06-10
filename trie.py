@@ -1,14 +1,19 @@
-import torch
-from torchvision import transforms
-from PIL import Image
+# Imports de la bibliothèque standard
 import os
 import shutil
-from datetime import datetime
 import sys
+import time
+from datetime import datetime
+
+# Imports de bibliothèques tierces
+from PIL import Image
+import torch
+from torchvision import transforms
 import yaml
 
+# Imports locaux
 import script_pytorch.trie as trie
-import time
+
 # Chargement du fichier de configuration
 with open("config.yaml", "r") as file:
     config = yaml.safe_load(file)

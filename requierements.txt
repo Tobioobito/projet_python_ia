@@ -1,15 +1,22 @@
-scipy
-opencv-python 
-matplotlib 
-tensorflow==2.15 #Pour GPU 
-numpy 
-scipy
-scikit-learn
-tqdm
-pyyaml
-matplotlib
+# === Librairies scientifiques générales ===
+numpy                 # Calcul numérique performant
+scipy                 # Fonctions scientifiques avancées (intégration, algèbre, etc.)
+scikit-learn          # Machine learning classique (classification, régression, etc.)
+tqdm                  # Barres de progression dans les boucles
+pyyaml                # Manipulation de fichiers YAML
+matplotlib            # Tracé de graphiques
+torch                 # Core PyTorch
+torchvision           # Outils et datasets pour la vision par ordinateur avec PyTorch
+torchaudio            # Traitement audio avec PyTorch
 
-#Pour Pytorch et le GPU
+# === Traitement d'image ===
+opencv-python         # Traitement d’image et vision par ordinateur
 
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+# === Deep Learning avec PyTorch (CUDA 12.1) ===
+#--index-url https://download.pytorch.org/whl/cu121
+#torch                 # Core PyTorch (avec support CUDA 12.1)
+#torchvision           # Outils et datasets pour la vision par ordinateur avec PyTorch
+#torchaudio            # Traitement audio avec PyTorch
 
+# === Deep Learning avec TensorFlow ===
+#tensorflow==2.15      # Framework de deep learning (version 2.15 avec support GPU si CUDA compatible)

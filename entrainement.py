@@ -1,33 +1,32 @@
+# Imports de la bibliothèque standard
+import argparse
+import copy
 import os
-from datetime import datetime
-
+import random
+import re
+import shutil
 import sys
 import time
-import re
-
-import cv2
-import torch
-import numpy as np
-from torchvision import models, transforms, datasets
-from sklearn.metrics.pairwise import cosine_similarity
 from collections import defaultdict
-from PIL import Image
-import shutil
+from datetime import datetime
 
-import random
+# Imports de bibliothèques tierces
+import cv2
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import yaml
+from PIL import Image
+from sklearn.metrics.pairwise import cosine_similarity
+from torch.utils.data import DataLoader, random_split
+from torchvision import datasets, models, transforms
 from tqdm import tqdm
 
-import argparse
-
-import torch.nn as nn
-from torch.utils.data import DataLoader, random_split
-
-import torch.optim as optim
-import copy
-
-import yaml
-
+# Imports locaux
 import script_pytorch.entrainement as entrainement
+
+
 
 # log nettoyage automatique
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'

@@ -1,11 +1,16 @@
+# Imports de la bibliothèque standard
+import os
+import shutil
+import sys
+from datetime import datetime
+
+# Imports de bibliothèques tierces
+from PIL import Image
 import torch
 from torchvision import transforms
-from PIL import Image
-import os
+
+# Imports locaux
 from . import cnn
-import shutil
-from datetime import datetime
-import sys
 
 #from ultralytics import YOLO
 
