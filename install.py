@@ -34,9 +34,9 @@ def install_requirements(file_path):
     try:
         print(f"[...] Installation des dépendances depuis {file_path}...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", file_path])
-        print(f"[OK] Installation terminée.")
+        print("[OK] Installation terminée.")
     except subprocess.CalledProcessError:
-        print(f"[ERREUR] Échec de l'installation des dépendances.")
+        print("[ERREUR] Échec de l'installation des dépendances.")
 
 if __name__ == "__main__":
     print(">>> Création des dossiers...")

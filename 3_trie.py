@@ -1,15 +1,12 @@
 # Imports de la bibliothèque standard
 import os
-import shutil
-import sys
 import time
-from datetime import datetime
 
 # Imports de bibliothèques tierces
-from PIL import Image
 import torch
-from torchvision import transforms
 import yaml
+
+from utils.logger import activer_log
 
 # Imports locaux
 import script_pytorch.trie as trie
@@ -42,7 +39,7 @@ model_data = config['model_parameters']['path_name']
 
 start_time = time.time()  # Démarre le chrono
 
-trie.activer_log(dossier_log)
+activer_log(dossier_log)
  
 model = trie.recuperer_model(num_classes, device, model_data)
 
