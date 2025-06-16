@@ -47,15 +47,15 @@ img_width = config['model_parameters']['img_width']
 
 start_time = time.time()  # Démarre le chrono
 
-
 activer_log(dossier_logs)
 
 # 🔹 Étape 1 : Nettoyage
 preparation.nettoyer_dataset(dataset_dir, classes_folders)
 # 🔹 Étape 2 : Evaluation avant augmentation
 mobilenet = preparation.charger_mobilenet(device)
-preparation.evaluer_dataset(dataset_dir, image_type, device, classes_folders, mobilenet, img_height, img_width)
+classement_images = preparation.evaluer_dataset(dataset_dir, image_type, device, classes_folders, mobilenet, img_height, img_width)
+
 # 🔹 Étape 3 : Augmentation
-#preparation.augmenter_dataset(dataset_dir, image_type, aug_temp_dir, classes_folders, seed, img_height, img_width)
+preparation.augmenter_dataset(dataset_dir, image_type, aug_temp_dir, classes_folders, seed, img_height, img_width, classement_images)
 # 🔹 Étape 4 : Evaluation après augmentation
-#preparation.evaluer_dataset(aug_temp_dir, image_type, device, classes_folders, mobilenet, img_height, img_width)
+preparation.evaluer_dataset(aug_temp_dir, image_type, device, classes_folders, mobilenet, img_height, img_width)

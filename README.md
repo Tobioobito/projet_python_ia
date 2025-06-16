@@ -9,6 +9,13 @@ Installation
 Architecture
 
 Process 
-1. Evaluation
+1. Préparation
+    - Nettoyage
+        - Enlève les images au formats gif...
+        - Enlève les doublons
+    - Evaluation
+    - Augmentation
 2. Entrainement
+    - Créer un modèle au format pth
+
 3. Trie

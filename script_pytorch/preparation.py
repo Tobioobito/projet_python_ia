@@ -152,7 +152,8 @@ def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilen
             mean_ref_similarity = 1.0
 
         # Évaluation des autres images (y compris les références pour comparaison)
-        for fname in all_files:
+        print(f"\n📊 Évaluation des images pour la classe : {class_name}")
+        for fname in tqdm(all_files, desc="🔍 Évaluation"):
             img_path = os.path.join(full_class_path, fname)
             feat = extract_feature(img_path, mobilenet, preprocess, device)
 
@@ -169,7 +170,7 @@ def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilen
 
             class_images[class_name].append((fname, mean_similarity, quality_score))
 
-            print(f"✅ Image évaluée : {fname}")
+    sorted_images_by_class = {}
 
     # Rapport final par classe
     for class_name, items in class_images.items():
@@ -179,41 +180,80 @@ def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilen
             print("⚠️ Aucune image à évaluer.")
             continue
 
-
         items.sort(key=lambda x: x[1], reverse=True)  # tri par homogénéité décroissante
-
+        sorted_fnames = [fname for fname, _, _ in items]
+        sorted_images_by_class[class_name] = sorted_fnames
 
         # Extraction des similarités triées
         similarities = [sim for _, sim, _ in items]
 
-        # Calcul des différences consécutives pour détecter le plus grand saut (gap)
-        diffs = np.diff(similarities)
-        if len(diffs) > 0:
-            max_gap_idx = np.argmin(diffs)
+        # Calcul du point de rupture amélioré
+        max_composite_gap = -1
+        best_idx = -1
 
-            sim_before = similarities[max_gap_idx]
-            sim_after = similarities[max_gap_idx + 1]
+        for i in range(1, len(similarities) - 1):  # on évite les extrémités
+            delta_before = abs(similarities[i] - similarities[i - 1])
+            delta_after = abs(similarities[i] - similarities[i + 1])
+            composite_gap = delta_before + delta_after
+
+            if composite_gap > max_composite_gap:
+                max_composite_gap = composite_gap
+                best_idx = i
+
+        if best_idx != -1:
+            sim_before = similarities[best_idx - 1]
+            sim_target = similarities[best_idx]
+            sim_after = similarities[best_idx + 1]
+
             discriminability_threshold = (sim_before + sim_after) / 2
 
             print(f"\n📌 Point de discriminabilité trouvé à : {discriminability_threshold:.4f}")
-            print(f"🧭 Point de rupture : image juste avant = '{items[max_gap_idx][0]}'")
-            print(f"   ↳ Écart entre '{items[max_gap_idx][0]}' ({sim_before:.4f}) "
-                f"et '{items[max_gap_idx + 1][0]}' ({sim_after:.4f}) = {abs(sim_before - sim_after):.4f}")
+            print(f"🧭 Point de rupture : image au centre = '{items[best_idx][0]}'")
+            print(f"   ↳ Δ avant = {abs(sim_target - sim_before):.4f}, Δ après = {abs(sim_target - sim_after):.4f}, "
+                f"Δ total = {max_composite_gap:.4f}")
 
-            # Affichage de toutes les différences d’homogénéité
-            print("\n📉 Écarts entre images consécutives (homogénéité) :")
-            for i, delta in enumerate(diffs):
-                print(f" - {items[i][0]} ➜ {items[i + 1][0]} : Δ = {abs(delta):.4f}")
+            # Affichage des écarts combinés pour chaque image (sauf extrémités)
+            delta_summary = []
+            print("\n📉 Écarts combinés (avant + après) pour chaque image :")
+            for i in range(len(similarities)):
+                fname = items[i][0]
+                if i == 0:
+                    delta = abs(similarities[i] - similarities[i + 1])
+                    delta_summary.append((fname, delta, None, delta))  # (nom, Δ après, Δ avant, Δ total)
+
+                elif i == len(similarities) - 1:
+                    delta = abs(similarities[i] - similarities[i - 1])
+                    delta_summary.append((fname, None, delta, delta))
+                else:
+                    delta_before = abs(similarities[i] - similarities[i - 1])
+                    delta_after = abs(similarities[i] - similarities[i + 1])
+                    delta_total = delta_before + delta_after
+                    delta_summary.append((fname, delta_after, delta_before, delta_total))
+            # Tri décroissant selon Δ total
+            delta_summary.sort(key=lambda x: x[3], reverse=True)
+
+            # Affichage trié
+            print("\n📉 Écarts combinés triés (Δ total décroissant) :")
+            for fname, delta_after, delta_before, delta_total in delta_summary:
+                if delta_before is None:
+                    print(f" - {fname} (tête)       : Δ après = {delta_after:.4f} | Δ total = {delta_total:.4f}")
+                elif delta_after is None:
+                    print(f" - {fname} (queue)      : Δ avant = {delta_before:.4f} | Δ total = {delta_total:.4f}")
+                else:
+                    print(f" - {fname}              : Δ avant = {delta_before:.4f} | Δ après = {delta_after:.4f} | Δ total = {delta_total:.4f}")
+        else:
+            print("\n⚠️ Pas assez de données pour calculer un point de discriminabilité.")
+
 
             # Images proches du seuil (±0.05)
-            border_images = [(fname, sim, qual) for fname, sim, qual in items
-                            if abs(sim - discriminability_threshold) < 0.05]
+            #border_images = [(fname, sim, qual) for fname, sim, qual in items
+                            #if abs(sim - discriminability_threshold) < 0.05]
 
-            print("\n⚠️ Images proches de la frontière discriminative :")
-            for fname, sim, qual in border_images:
-                print(f" - {fname} | Homogénéité : {sim:.4f} | Qualité : {qual:.2f}")
-        else:
-            print("\n📌 Pas assez d'images pour calculer un point de discriminabilité.")
+            #print("\n⚠️ Images proches de la frontière discriminative :")
+            #for fname, sim, qual in border_images:
+                #print(f" - {fname} | Homogénéité : {sim:.4f} | Qualité : {qual:.2f}")
+        #else:
+            #print("\n📌 Pas assez d'images pour calculer un point de discriminabilité.")
 
 
         for fname, sim, qual in items:
@@ -227,9 +267,10 @@ def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilen
         mean_qual = np.mean([qual for _, _, qual in items])
         print(f"\n📊 Moyenne homogénéité : {mean_sim:.4f}")
         print(f"📊 Moyenne qualité     : {mean_qual:.2f}")
+        return sorted_images_by_class
 
 
-def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed, img_height, img_width):
+def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed, img_height, img_width, images_par_homogeneite=None):
     print("\n🔄 AUGMENTATION DES DONNÉES...")
 
     # Copier tout le dataset original dans le dossier de sortie
@@ -275,22 +316,48 @@ def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed
         if not os.path.isdir(class_path):
             continue
 
-        print(f"🔎 Traitement de la classe : {class_name}")
+        print(f"\n🔎 Traitement de la classe : {class_name}")
+
+        top_selected = []
+        if images_par_homogeneite:
+            top_imgs = images_par_homogeneite.get(class_name, [])
+            cutoff = int(len(top_imgs) * 2 / 40)
+            top_selected = top_imgs[:cutoff]
+
+            print(f"🏆 Top 2/3 des images les plus homogènes ({len(top_selected)} images) :")
+            for img in top_selected:
+                print(f"   - {img}")
 
         for fname in os.listdir(class_path):
             if fname.lower().endswith((".png", ".jpg", ".jpeg")):
                 full_path = os.path.join(class_path, fname)
+
+                if images_par_homogeneite:
+                    if fname not in top_selected:
+                        print(f"⛔ Ignorée (hors top 2/3) : {fname}")
+                        continue
+                    print(f"✅ Gardée (top 2/3) : {fname}")
+
                 class_images[class_name].append(full_path)
 
     # 3. Calculer combien d’images ajouter par classe
-    counts = {label: len(paths) for label, paths in class_images.items()}
-    max_count = max(counts.values())
+    # On garde la trace du nombre total d’images originales pour chaque classe
+    true_class_counts = {class_name: len(images_par_homogeneite.get(class_name, [])) for class_name in classes_folders}
+    max_count = max(true_class_counts.values())
 
     for label, image_paths in class_images.items():
-        current_count = len(image_paths)
-        extra_needed = max(1, int(current_count * 0.05)) if current_count == max_count else max_count - current_count
+        current_total = true_class_counts.get(label, len(image_paths))  # total images originales
+        current_filtered = len(image_paths)  # uniquement les top 2/3 retenues
 
-        print(f"🔧 {label} → Ajout de {extra_needed} images")
+        if current_total == max_count:
+            # Si c’est la classe la plus représentée, on augmente de 5%
+            extra_needed = max(1, int(current_total * 0.05))
+        else:
+            # Sinon, on égalise jusqu’à la classe majoritaire
+            extra_needed = max_count - current_total
+
+        print(f"🔧 {label} → Ajout de {extra_needed} images (sur {current_filtered} images sélectionnées)")
+
         save_dir = os.path.join(augment_path, label)
         os.makedirs(save_dir, exist_ok=True)
 
@@ -299,4 +366,8 @@ def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed
             path = random.choice(image_paths)
             image = Image.open(path).convert("RGB").resize((img_height, img_width))
             aug_image = augmentation(image)
-            aug_image.save(os.path.join(save_dir, f"aug_{i}.jpg"))
+
+            save_path = os.path.join(save_dir, f"aug_{i}.jpg")
+            aug_image.save(save_path)
+
+            print(f"📈 Augmentation → Image source : {os.path.basename(path)} → Fichier généré : {os.path.basename(save_path)}")
