@@ -12,10 +12,12 @@ from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, transforms
 from tqdm import tqdm
 
+from datetime import datetime
+
 # Imports locaux
 import script_pytorch.cnn as cnn
 
-def preparer_dataset(classes_autorisees, root_dir, type_images, batch_size, seed, img_height, img_width):
+def preparer_dataset(classes_autorisees, root_dir, type_images, batch_size, seed, img_height, img_width, num_workers, pin_memory):
 
     #train_loader : pour l'apprentissage. Le modèle apprend à classer. Apprendre avec des exercices. données vues par le modèle pendant l'apprentissage.
     #val_loader : évaluation pendant l'entraînement, souvent pour détecter l’overfitting. . pour surveiller la convergence / overfitting. Vérifie les progrès à chaque époque d’entraînement. Faire des exercices similaires pour voir si tu progresses.
@@ -59,9 +61,9 @@ def preparer_dataset(classes_autorisees, root_dir, type_images, batch_size, seed
     train_ds, val_ds, test_ds = random_split(full_dataset, [train_len, val_len, test_len])
 
     # Créer les DataLoaders
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_ds, batch_size=batch_size)
-    test_loader = DataLoader(test_ds, batch_size=batch_size)
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle = True, num_workers=num_workers, pin_memory= pin_memory)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle = False, num_workers=num_workers, pin_memory= pin_memory)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle = False, num_workers=num_workers, pin_memory= pin_memory)
 
     return train_loader, val_loader, test_loader
 
@@ -233,7 +235,16 @@ def entrainer_modele(model, train_loader, val_loader, epochs, learning_rate, dev
     plt.legend()
 
     plt.tight_layout()
-    plt.show()
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+    # 📌 Sauvegarde dans le dossier
+    courbes_dir = "logs/entrainement/courbes"
+    os.makedirs(courbes_dir, exist_ok=True)  # s'assure que le dossier existe
+    fichier_courbe = os.path.join(courbes_dir, f"courbes_{timestamp}.png")
+
+    plt.savefig(fichier_courbe)
+    plt.close()
 
     return model
 

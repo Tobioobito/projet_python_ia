@@ -12,4 +12,5 @@ script_tensorflow/
 modele/
 docs/
 config.yaml
+config.save.yaml
 todo.txt

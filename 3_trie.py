@@ -56,4 +56,4 @@ trie.ecrire_rapport(total_images_avant, images_a_classer, images_triees)
 
 end_time = time.time()  # Arrête le chrono
 train_duration = end_time - start_time
-print(f"✅ Entrainement terminé en {train_duration:.2f}s")
+print(f"✅ Triage terminé en {train_duration:.2f}s")

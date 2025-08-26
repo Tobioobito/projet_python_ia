@@ -85,6 +85,7 @@ def chercher_references_par_classe(class_dir, required_count):
     
     else:
         print(f"✅ Classe '{os.path.basename(class_dir)}' : {len(reference_images)} image(s) de référence validée(s).")
+
     return reference_images
 
 
@@ -102,7 +103,6 @@ def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilen
     # - Redimensionnement (Resize)
     # - Conversion en tenseur (ToTensor)
     # - Normalisation avec les valeurs d'ImageNet
-
     preprocess = transforms.Compose([
         transforms.Resize((img_height, img_width)),
         transforms.ToTensor(),
@@ -122,53 +122,76 @@ def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilen
         all_files = [f for f in os.listdir(full_class_path)
                      if f.lower().endswith((".png", ".jpg", ".jpeg"))]
 
+        reference_paths = []
+        mode_pairwise = False
+
         # Sélection des références
         required_refs = compter_references_par_classe(len(all_files))
         try:
             reference_paths = chercher_references_par_classe(full_class_path, required_refs)
         except ValueError as e:
             print(e)
-            continue
+            print(f"ℹ️ Passage en mode pairwise pour la classe '{class_name}'.")
+            mode_pairwise = True
 
-        # Extraction des vecteurs de référence
-        reference_features = []
-        for ref_path in reference_paths:
-            feat = extract_feature(ref_path, mobilenet, preprocess, device)
-            reference_features.append(feat)
+        # Extraction des vecteurs
+        embeddings = []
+        filenames = []
+        images = []
 
-        reference_features = np.array(reference_features)
+        for fname in tqdm(all_files, desc="🔍 Évaluation"):
+            img_path = os.path.join(full_class_path, fname)
+            img = Image.open(img_path).convert("RGB")
+            img_resized = img.resize((img_height, img_width))
+            img_tensor = preprocess(img).unsqueeze(0).to(device)
+
+            with torch.no_grad():
+                feat = mobilenet(img_tensor).cpu().numpy()[0]
+
+            embeddings.append(feat)
+            filenames.append(fname)
+            images.append(np.array(img_resized))
+
+        embeddings = np.array(embeddings)
 
         # Vérification homogénéité des références
-        if len(reference_features) >= 2:
+        if not mode_pairwise and len(reference_paths) >= 2:
+            reference_features = np.array([extract_feature(ref, mobilenet, preprocess, device) for ref in reference_paths])
             sim_matrix = cosine_similarity(reference_features)
             upper_triangle = sim_matrix[np.triu_indices(len(sim_matrix), k=1)]
             mean_ref_similarity = np.mean(upper_triangle)
+
             if mean_ref_similarity < 0.7:
-                print(f"⚠️ Références trop hétérogènes (score : {mean_ref_similarity:.2f})")
-                continue
+                print(f"⚠️ Références trop hétérogènes (score : {mean_ref_similarity:.2f}) → passage en mode pairwise.")
+                mode_pairwise = True
             else:
                 print(f"✅ Références valides (score : {mean_ref_similarity:.2f})")
-        else:
-            mean_ref_similarity = 1.0
 
         # Évaluation des autres images (y compris les références pour comparaison)
         print(f"\n📊 Évaluation des images pour la classe : {class_name}")
-        for fname in tqdm(all_files, desc="🔍 Évaluation"):
-            img_path = os.path.join(full_class_path, fname)
-            feat = extract_feature(img_path, mobilenet, preprocess, device)
 
+        similarities = []
+        if mode_pairwise:
+            # Homogénéité : moyenne de similarité pairwise
+            sim_matrix = cosine_similarity(embeddings)
+            for i in range(len(embeddings)):
+                sim_scores = [sim_matrix[i][j] for j in range(len(embeddings)) if j != i]
+                similarities.append(np.mean(sim_scores))
+        else:
             # Homogénéité : moyenne de similarité avec les références
-            similarities = cosine_similarity([feat], reference_features)[0]
-            mean_similarity = np.mean(similarities)
+            for feat in embeddings:
+                sim = cosine_similarity([feat], reference_features)[0]
+                similarities.append(np.mean(sim))
 
-            # Qualité
-            img = Image.open(img_path).convert("RGB")
-            img_resized = img.resize((img_height, img_width))
-            img_array = np.array(img_resized)
-            gray = cv2.cvtColor(img_array.astype(np.uint8), cv2.COLOR_RGB2GRAY)
+        # Qualité
+        quality_scores = []
+        for img in images:
+            gray = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_RGB2GRAY)
             quality_score = np.std(gray) if is_illustration else cv2.Laplacian(gray, cv2.CV_64F).var()
+            quality_scores.append(quality_score)
 
-            class_images[class_name].append((fname, mean_similarity, quality_score))
+        class_items = list(zip(filenames, similarities, quality_scores))
+        class_images[class_name] = class_items
 
     sorted_images_by_class = {}
 
@@ -229,6 +252,7 @@ def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilen
                     delta_after = abs(similarities[i] - similarities[i + 1])
                     delta_total = delta_before + delta_after
                     delta_summary.append((fname, delta_after, delta_before, delta_total))
+
             # Tri décroissant selon Δ total
             delta_summary.sort(key=lambda x: x[3], reverse=True)
 
@@ -244,30 +268,19 @@ def evaluer_dataset(dataset_dir, is_illustration, device, classes_paths, mobilen
         else:
             print("\n⚠️ Pas assez de données pour calculer un point de discriminabilité.")
 
-
-            # Images proches du seuil (±0.05)
-            #border_images = [(fname, sim, qual) for fname, sim, qual in items
-                            #if abs(sim - discriminability_threshold) < 0.05]
-
-            #print("\n⚠️ Images proches de la frontière discriminative :")
-            #for fname, sim, qual in border_images:
-                #print(f" - {fname} | Homogénéité : {sim:.4f} | Qualité : {qual:.2f}")
-        #else:
-            #print("\n📌 Pas assez d'images pour calculer un point de discriminabilité.")
-
-
         for fname, sim, qual in items:
             sim_flag = "🔴 Mauvais" if sim < 0.5 else "🟡 Moyen" if sim < 0.7 else "🟢 Bon" if sim < 0.9 else "🔵 Excellent"
             qual_flag = "🔴 Mauvais" if qual < 30 else "🟡 Moyen" if qual < 50 else "🟢 Bon" if qual < 100 else "🔵 Excellent"
             is_reference = "⭐" if os.path.join(dataset_dir, class_name, fname) in reference_paths else " "
             print(f"🔹 {fname} {is_reference} | Homogénéité : {sim:.4f} ({sim_flag}) | Qualité : {qual:.2f} ({qual_flag})")
-            #print(f"🔹 {fname} | Homogénéité : {sim:.4f} ({sim_flag}) | Qualité : {qual:.2f} ({qual_flag})")
 
         mean_sim = np.mean([sim for _, sim, _ in items])
         mean_qual = np.mean([qual for _, _, qual in items])
         print(f"\n📊 Moyenne homogénéité : {mean_sim:.4f}")
         print(f"📊 Moyenne qualité     : {mean_qual:.2f}")
-        return sorted_images_by_class
+
+    return sorted_images_by_class
+
 
 
 def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed, img_height, img_width, images_par_homogeneite=None):
@@ -321,7 +334,7 @@ def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed
         top_selected = []
         if images_par_homogeneite:
             top_imgs = images_par_homogeneite.get(class_name, [])
-            cutoff = int(len(top_imgs) * 2 / 40)
+            cutoff = int(len(top_imgs) * 2 / 3)
             top_selected = top_imgs[:cutoff]
 
             print(f"🏆 Top 2/3 des images les plus homogènes ({len(top_selected)} images) :")
@@ -361,6 +374,7 @@ def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed
         save_dir = os.path.join(augment_path, label)
         os.makedirs(save_dir, exist_ok=True)
 
+        augmented_images = []
         # 4. Générer des images augmentées
         for i in tqdm(range(extra_needed), desc=""):
             path = random.choice(image_paths)
@@ -370,4 +384,10 @@ def augmenter_dataset(base_path, image_type, augment_path, classes_folders, seed
             save_path = os.path.join(save_dir, f"aug_{i}.jpg")
             aug_image.save(save_path)
 
-            print(f"📈 Augmentation → Image source : {os.path.basename(path)} → Fichier généré : {os.path.basename(save_path)}")
+            augmented_images.append((os.path.basename(path), os.path.basename(save_path)))
+            #print(f"📈 Source : {os.path.basename(path)} → Généré : {os.path.basename(save_path)}")
+        
+        # 🔁 Affichage après augmentation
+        print("\n📈 Images augmentées générées :")
+        for src, gen in augmented_images:
+            print(f"📈 Source : {src} → Généré : {gen}")
